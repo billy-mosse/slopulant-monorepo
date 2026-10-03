@@ -85,13 +85,22 @@ def build_features(conn, cutoff: pd.Timestamp) -> pd.DataFrame:
         session_start=("event_ts", "min"),
         n_events=("event_type", "size"),
         n_add_to_cart=("event_type", lambda s: (s == "add_to_cart").sum()),
+        n_product_views=("event_type", lambda s: (s == "product_view").sum()),
     )
+    sess["had_atc"] = (sess["n_add_to_cart"] > 0).astype(int)
     sess["days_ago"] = (cutoff - sess["session_start"]).dt.total_seconds() / 86400.0
     sess_feats = sess.groupby("customer_id").agg(
         session_recency_days=("days_ago", "min"),
         sessions_total=("session_id", "nunique"),
         events_per_session=("n_events", "mean"),
         atc_total=("n_add_to_cart", "sum"),
+        atc_session_share=("had_atc", "mean"),
+        product_views_total=("n_product_views", "sum"),
+    )
+    # browsing intent: how recently did they look at a product, not just visit
+    pv = ev[ev["event_type"] == "product_view"]
+    sess_feats["days_since_product_view"] = (
+        (cutoff - pv.groupby("customer_id")["event_ts"].max()).dt.total_seconds() / 86400.0
     )
     for window in (7, 30, 90):
         sess_feats[f"sessions_{window}d"] = (
@@ -100,11 +109,16 @@ def build_features(conn, cutoff: pd.Timestamp) -> pd.DataFrame:
     sess_feats = sess_feats.fillna({f"sessions_{w}d": 0 for w in (7, 30, 90)})
     sess_feats["visit_freq_trend"] = (sess_feats["sessions_30d"] + 1) / (sess_feats["sessions_90d"] / 3 + 1)
     sess_feats["log_session_recency"] = np.log1p(sess_feats["session_recency_days"])
+    sess_feats["product_views_30d"] = (
+        sess[sess["days_ago"] <= 30].groupby("customer_id")["n_product_views"].sum()
+    ).reindex(sess_feats.index, fill_value=0)
+    sess_feats["views_per_session_30d"] = sess_feats["product_views_30d"] / sess_feats["sessions_30d"].clip(lower=1)
     log.info(f"session features for {len(sess_feats):,} customers from {len(ev):,} events")
 
     feats = rfm.join(cat_share, how="left").join(sess_feats, how="left")
     feats["session_recency_days"] = feats["session_recency_days"].fillna(LOOKBACK_DAYS)
     feats["log_session_recency"] = feats["log_session_recency"].fillna(np.log1p(LOOKBACK_DAYS))
+    feats["days_since_product_view"] = feats["days_since_product_view"].fillna(LOOKBACK_DAYS)
     feats = feats.fillna(0.0).drop(columns=["last_order_ts", "first_order_ts"])
     log.info(f"feature matrix: {feats.shape[0]:,} rows x {feats.shape[1]} cols")
     return feats

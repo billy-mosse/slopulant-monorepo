@@ -15,7 +15,9 @@ log = logging.getLogger("churn")
 
 OUTPUT_TABLE = "scores.p_churn"
 HORIZON_DAYS = 90
-MODEL_VERSION = "churn_gbm_v3"
+MODEL_VERSION = "churn_gbm_v4"  # v4: browsing features (product views, ATC share)
+BROWSING_FEATURES = ["atc_session_share", "product_views_total", "days_since_product_view",
+                     "product_views_30d", "views_per_session_30d"]
 
 
 def labelled_snapshot(conn, cutoff: pd.Timestamp) -> pd.DataFrame:
@@ -46,6 +48,10 @@ def main():
         score = build_features(conn, score_date)
 
     feature_cols = [c for c in train.columns if c != "churned"]
+    missing = [c for c in BROWSING_FEATURES if c not in feature_cols]
+    if missing:
+        raise ValueError(f"browsing features missing from snapshot: {missing}")
+    log.info(f"{len(feature_cols)} features ({len(BROWSING_FEATURES)} browsing)")
     calib = calib.reindex(columns=train.columns, fill_value=0.0)
     score = score.reindex(columns=feature_cols, fill_value=0.0)
 
@@ -55,6 +61,9 @@ def main():
     )
     model.fit(train[feature_cols], train["churned"])
     log.info(f"fitted GBM with {model.n_iter_} iterations on {len(train):,} rows")
+    if args.dry_run:
+        imp = pd.Series(np.abs(model.predict_proba(calib[feature_cols])[:, 1] - calib["churned"]).mean(), index=["calib_mae"])
+        log.info(f"calibration-set MAE before isotonic: {imp.iloc[0]:.4f}")
 
     raw_calib = model.predict_proba(calib[feature_cols])[:, 1]
     iso = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0)
