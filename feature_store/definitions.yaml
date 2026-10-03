@@ -1,0 +1,45 @@
+# Feature view definitions for the daily materialization job.
+# Each view: one entity key, one source table, a list of windowed aggregations.
+version: 3
+defaults:
+  ttl_days: 2
+  windows: [7, 30, 90]
+
+feature_views:
+  - name: customer_daily
+    entity: customer_id
+    sink: features.customer_daily
+    sources:
+      - table: orders.lines
+        timestamp_column: ordered_at
+        aggregations:
+          - {column: order_id, function: count_distinct, alias: orders}
+          - {column: line_revenue, function: sum, alias: revenue}
+          - {column: line_revenue, function: avg, alias: avg_line_value}
+          - {column: quantity, function: sum, alias: units}
+      - table: sessions.events
+        timestamp_column: event_ts
+        filter: "event_type in ('page_view', 'add_to_cart')"
+        aggregations:
+          - {column: session_id, function: count_distinct, alias: sessions}
+          - {column: event_id, function: count, alias: events}
+
+  - name: product_daily
+    entity: product_id
+    sink: features.product_daily
+    ttl_days: 1
+    sources:
+      - table: orders.lines
+        timestamp_column: ordered_at
+        aggregations:
+          - {column: quantity, function: sum, alias: units_sold}
+          - {column: line_revenue, function: sum, alias: revenue}
+          - {column: customer_id, function: count_distinct, alias: buyers}
+      - table: sessions.events
+        timestamp_column: event_ts
+        filter: "event_type == 'page_view'"
+        aggregations:
+          - {column: event_id, function: count, alias: views}
+    static:
+      table: catalog.products
+      columns: [category, brand, list_price]
