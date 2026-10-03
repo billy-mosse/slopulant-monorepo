@@ -1,0 +1,14 @@
+input:
+  table: catalog.products
+  columns: [sku, title, description]
+  where: "is_active = true"
+output:
+  table: catalog.product_attributes
+thresholds:
+  material: 0.70
+  size: 0.75
+  dimensions: 0.80
+  thread_count: 0.85
+  care: 0.60
+  pattern: 0.65
+batch_size: 5000
