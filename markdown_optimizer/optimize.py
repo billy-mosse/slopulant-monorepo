@@ -5,7 +5,10 @@ season deadline, pick a markdown ladder (discount per week) that maximizes
 revenue minus holding cost. Solved with dynamic programming over
 (week, stock bucket, current discount level).
 
-Reads:  pricing.elasticities, inventory.stock_levels
+Weeks where the category already runs a promo (from the promo calendar) are
+frozen: no new markdown step may start, to avoid stacking discounts.
+
+Reads:  pricing.elasticities, inventory.stock_levels, pricing.promo_calendar
 Writes: pricing.markdown_plan
 """
 import argparse
@@ -21,6 +24,7 @@ log = logging.getLogger("markdown")
 ELASTICITY_TABLE = "pricing.elasticities"
 STOCK_TABLE = "inventory.stock_levels"
 PLAN_TABLE = "pricing.markdown_plan"
+PROMO_TABLE = "pricing.promo_calendar"
 
 # Allowed discount steps. Business rule: markdowns are permanent within a
 # season, so the ladder may only stay or step down (never back up in price).
@@ -33,7 +37,7 @@ UNSOLD_PENALTY = 0.25           # extra penalty per unsold unit (fraction of pri
 DEFAULT_ELASTICITY = -1.5       # used when a category has no estimate
 
 
-def load_inputs(engine) -> tuple[pd.DataFrame, pd.DataFrame]:
+def load_inputs(engine) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     stock = pd.read_sql(
         f"""SELECT sku, category, on_hand_units, full_price, baseline_weekly_units,
                    season_end_date
@@ -42,7 +46,17 @@ def load_inputs(engine) -> tuple[pd.DataFrame, pd.DataFrame]:
         engine,
     )
     elast = pd.read_sql(f"SELECT category, elasticity FROM {ELASTICITY_TABLE}", engine)
-    return stock, elast
+    promos = pd.read_sql(
+        f"SELECT category, week_start FROM {PROMO_TABLE} WHERE week_start >= CURRENT_DATE", engine
+    )
+    return stock, elast, promos
+
+
+def promo_weeks(promos: pd.DataFrame, category: str, today: date, weeks: int) -> set[int]:
+    """Week offsets (0 = this week) in which `category` has a planned promo."""
+    starts = pd.to_datetime(promos.loc[promos["category"] == category, "week_start"])
+    offsets = ((starts - pd.Timestamp(today)).dt.days // 7).astype(int)
+    return {int(o) for o in offsets if 0 <= o < weeks}
 
 
 def excess_stock(stock: pd.DataFrame, today: date) -> pd.DataFrame:
@@ -58,8 +72,11 @@ def expected_demand(base: float, discount: float, elasticity: float) -> float:
     return base * (1.0 - discount) ** elasticity
 
 
-def plan_sku(units: int, price: float, base: float, elasticity: float, weeks: int):
-    """DP over weeks x stock buckets x discount level. Returns (ladder, value)."""
+def plan_sku(units: int, price: float, base: float, elasticity: float, weeks: int,
+             frozen: set[int] = frozenset()):
+    """DP over weeks x stock buckets x discount level. Returns (ladder, value).
+
+    In `frozen` weeks the discount level must stay where it is (promo running)."""
     bucket_size = max(units / N_BUCKETS, 1.0)
     n_b = int(np.ceil(units / bucket_size)) + 1
     n_d = len(DISCOUNTS)
@@ -78,8 +95,9 @@ def plan_sku(units: int, price: float, base: float, elasticity: float, weeks: in
             stock_units = b * bucket_size
             for d in range(n_d):
                 best, best_k = -np.inf, d
-                # Only same or deeper discount is allowed.
-                for k in range(d, n_d):
+                # Only same or deeper discount is allowed; promo weeks keep the current level.
+                allowed = [d] if t in frozen else range(d, n_d)
+                for k in allowed:
                     q = expected_demand(base, DISCOUNTS[k], elasticity)
                     sold = min(q, stock_units)
                     remaining = stock_units - sold
@@ -109,7 +127,7 @@ def plan_sku(units: int, price: float, base: float, elasticity: float, weeks: in
     return ladder, rows, float(V[0, b0, 0])
 
 
-def build_plan(cands: pd.DataFrame, elast: pd.DataFrame, today: date) -> pd.DataFrame:
+def build_plan(cands: pd.DataFrame, elast: pd.DataFrame, promos: pd.DataFrame, today: date) -> pd.DataFrame:
     e_map = dict(zip(elast["category"], elast["elasticity"]))
     out = []
     for r in cands.itertuples(index=False):
@@ -118,8 +136,9 @@ def build_plan(cands: pd.DataFrame, elast: pd.DataFrame, today: date) -> pd.Data
         if e > -0.2:
             log.warning("sku %s: implausible elasticity %.2f, using default", r.sku, e)
             e = DEFAULT_ELASTICITY
+        frozen = promo_weeks(promos, r.category, today, int(r.weeks_left))
         ladder, rows, value = plan_sku(int(r.on_hand_units), float(r.full_price),
-                                       float(r.baseline_weekly_units), e, int(r.weeks_left))
+                                       float(r.baseline_weekly_units), e, int(r.weeks_left), frozen)
         for week, disc, sold, left in rows:
             out.append({
                 "sku": r.sku,
@@ -130,6 +149,7 @@ def build_plan(cands: pd.DataFrame, elast: pd.DataFrame, today: date) -> pd.Data
                 "expected_remaining": round(left, 1),
                 "elasticity_used": e,
                 "plan_value": round(value, 2),
+                "promo_week": week in frozen,
             })
         log.info("sku %s: ladder %s, final stock %.0f", r.sku,
                  "/".join(f"{int(x * 100)}" for x in ladder), rows[-1][3] if rows else 0)
@@ -145,11 +165,11 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 
     engine = create_engine(args.dsn)
-    stock, elast = load_inputs(engine)
+    stock, elast, promos = load_inputs(engine)
     cands = excess_stock(stock, args.as_of)
     log.info("%d of %d SKUs have excess stock", len(cands), len(stock))
 
-    plan = build_plan(cands, elast, args.as_of)
+    plan = build_plan(cands, elast, promos, args.as_of)
     if args.dry_run or plan.empty:
         print(plan.head(50).to_string(index=False))
         return
