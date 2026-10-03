@@ -1,0 +1,45 @@
+# Teams and ownership for the Slopulent Living ML monorepo.
+# Each top-level folder belongs to exactly one team. Keep this file up to date when
+# systems move between teams; tooling (e.g. the overlap watcher) reads it.
+
+teams:
+  catalog:
+    name: Catalog & Content
+    lead: Priya Raman
+    members: [Arjun Mehta, Nadia Karimi, Priya Raman, Sofia Brandt]
+    folders: [attribute_extraction, category_classifier, color_extraction, image_quality, product_embeddings, product_matching, tag_validation, title_rewriter]
+  search:
+    name: Search & Recommendations
+    lead: Yuki Tanaka
+    members: [Felix Wagner, Marcus Okafor, Tomás Herrera, Yuki Tanaka]
+    folders: [autocomplete, cart_recs, homepage_personalization, i2i_recs, query_understanding, search_experiments, search_ranker, trending_products, two_tower_search]
+  pricing:
+    name: Pricing
+    lead: Lena Fischer
+    members: [Chen Wei, Lena Fischer, Omar Farouk]
+    folders: [competitor_price_matching, elasticity_estimation, markdown_optimizer, price_model]
+  customer:
+    name: Customer Analytics
+    lead: Kenji Watanabe
+    members: [Kenji Watanabe, Noor Haddad]
+    folders: [churn_prediction, clv_model, customer_embeddings, customer_intent]
+  marketing:
+    name: Marketing Science
+    lead: Grace Liu
+    members: [Grace Liu, Mateo Rossi]
+    folders: [customer_segmentation, email_product_recs, email_send_time, marketing_models, next_best_offer, promo_uplift]
+  supply:
+    name: Supply Chain
+    lead: Ravi Iyer
+    members: [Ben Adeyemi, Hannah Becker, Ravi Iyer]
+    folders: [demand_forecast, replenishment, returns_reason_classifier]
+  reviews:
+    name: Reviews & Trust
+    lead: Dana Whitfield
+    members: [Dana Whitfield, Ines Duarte, Leo Martins]
+    folders: [fake_review_detection, review_moderation, review_sentiment, review_summaries]
+  platform:
+    name: ML Platform
+    lead: Sam Okoye
+    members: [Priyanka Nair, Sam Okoye]
+    folders: [ab_test_analysis, feature_store, model_monitoring]
