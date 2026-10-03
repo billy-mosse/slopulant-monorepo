@@ -16,6 +16,7 @@ Each top-level folder is an independently owned system. Owners are the main auth
 | `cart_recs/` | Search & recommendations | Cart add-ons from association rules |
 | `homepage_personalization/` | Search & recommendations | Per-customer homepage modules |
 | `i2i_recs/` | Search & recommendations | "You may also like" |
+| `search_experiments/` | Search & recommendations | Synonyms, zero-results fallback, query categories, diversity |
 | `query_understanding/` | Search & recommendations | Spell correction + query intent |
 | `search_ranker/` | Search & recommendations | LambdaMART second-stage ranker |
 | `trending_products/` | Search & recommendations | Trending per category |
@@ -29,6 +30,7 @@ Each top-level folder is an independently owned system. Owners are the main auth
 | `customer_embeddings/` | Customer analytics | Customer taste/value vectors |
 | `customer_intent/` | Customer analytics | Session p(conversion) |
 | `customer_segmentation/` | Marketing | Marketing segments |
+| `marketing_models/` | Marketing | Lookalikes, subject-line scoring, coupon propensity |
 | `email_product_recs/` | Marketing | Recs for post-purchase email |
 | `email_send_time/` | Marketing | Best email hour per customer |
 | `next_best_offer/` | Marketing | Offer selection (contextual bandit) |
