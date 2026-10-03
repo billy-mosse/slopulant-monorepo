@@ -27,6 +27,14 @@ def item_vector(product):
     return v / n if n else v
 
 
+def popularity_fallback(recs, popular_skus, k=5):
+    """Pad short rec lists with best sellers so the carousel is never empty."""
+    for sku, items in recs.items():
+        seen = {sku} | {s for s, _ in items}
+        items += [(p, 0.0) for p in popular_skus if p not in seen][: k - len(items)]
+    return recs
+
+
 def top_k_similar(products, k=5):
     skus = [p["sku"] for p in products]
     mat = np.stack([item_vector(p) for p in products])
