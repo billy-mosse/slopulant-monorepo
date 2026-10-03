@@ -1,0 +1,32 @@
+# Search LTR ranker (second stage over two-tower retrieval)
+tables:
+  click_logs: search.click_logs
+  product_embeddings: features.product_embeddings
+  query_intents: search.query_intents
+  output: search.ranker_model
+
+data:
+  lookback_days: 60
+  min_impressions_per_query: 20
+  max_position: 48
+
+features:
+  ctr_prior_clicks: 2.0
+  ctr_prior_impressions: 40.0
+  bm25_k1: 1.2
+  bm25_b: 0.75
+
+lightgbm:
+  objective: lambdarank
+  metric: ndcg
+  eval_at: [10]
+  learning_rate: 0.05
+  num_leaves: 63
+  min_data_in_leaf: 50
+  feature_fraction: 0.8
+  lambdarank_truncation_level: 20
+  num_boost_round: 600
+  early_stopping_rounds: 50
+
+validation:
+  holdout_days: 7
